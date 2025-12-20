@@ -235,7 +235,13 @@ const RecipeForm: React.FC<RecipeFormProps> = ({
       onRecipeGenerated(recipe);
     } catch (err) {
       console.error('Error generating recipe:', err);
-      setError('Failed to generate recipe. Please try again later.');
+      const message = err instanceof Error && err.message ? err.message : 'Failed to generate recipe. Please try again later.';
+      setError(message);
+      toast({
+        title: 'Recipe generation failed',
+        description: message,
+        variant: 'destructive',
+      });
     } finally {
       setIsGenerating(false);
     }

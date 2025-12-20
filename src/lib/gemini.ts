@@ -1,6 +1,6 @@
 // src/lib/gemini.ts
 
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+// Switched to OpenAI for text generation; Gemini imports removed.
 
 // --- Enhanced Recipe Interface ---
 export interface Recipe {
@@ -27,26 +27,33 @@ export interface Recipe {
   userNotes?: string; // Added: User's personal notes about the recipe
 }
 
-// --- Initialize Gemini Client ---
-const initGeminiClient = () => {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) {
-    console.error("VITE_GEMINI_API_KEY is not set in environment variables.");
-    throw new Error("Gemini API key is missing. Please set VITE_GEMINI_API_KEY in your .env file.");
+// --- OpenAI Client Helpers ---
+type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+type ProxyPayload = {
+  messages: ChatMessage[];
+  temperature?: number;
+  model?: string;
+};
+
+const callOpenAI = async (messages: ChatMessage[], temperature = 0.7): Promise<string> => {
+  const apiBase = import.meta.env.VITE_API_BASE || ""; // leave empty for same-origin
+  const resp = await fetch(`${apiBase}/api/generate-recipe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, temperature } satisfies ProxyPayload),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`OpenAI proxy error (${resp.status}): ${text}`);
   }
-  try {
-    // Safety settings can be adjusted if needed
-    const safetySettings = [
-        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-    ];
-    return new GoogleGenerativeAI(apiKey);
-  } catch (error) {
-    console.error("Failed to initialize GoogleGenerativeAI:", error);
-    throw new Error("Failed to initialize Gemini client. Check API key format.");
+
+  const data = await resp.json();
+  const content = data?.content;
+  if (!content || typeof content !== "string") {
+    throw new Error("Invalid response format from OpenAI proxy");
   }
+  return content;
 };
 
 // --- Parsing Function ---
@@ -156,52 +163,8 @@ const parseRecipeResponse = (text: string): Recipe => {
  * @returns A Promise resolving to a base64-encoded image string or null if generation failed
  */
 export const generateRecipeImage = async (recipe: Recipe): Promise<string | null> => {
-  try {
-    if (!recipe.title) {
-      console.error("Cannot generate image: Recipe title is missing");
-      return null;
-    }
-
-    const genAI = initGeminiClient();
-    
-    // Check if the API key has gemini-2.0-flash-exp-image-generation model access
-    // If not, we'll provide a helpful error
-    try {
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.0-flash-exp-image-generation",
-      });
-
-      // Build a prompt for the image generation
-      const ingredientsList = recipe.ingredients.slice(0, 5).join(", "); // First 5 ingredients for context
-      const prompt = `Generate a high-quality, appetizing image of ${recipe.title}. ` + 
-                    `This dish contains ingredients like ${ingredientsList}. ` +
-                    `${recipe.description || ''} ` +
-                    `Make the image look like a professional food photography shot with good lighting and appealing presentation.`;
-
-      // Generate the image with the updated API format
-      const response = await model.generateContent(prompt);
-      
-      // Extract the image data from the response
-      if (response.response && response.response.candidates && 
-          response.response.candidates[0]?.content?.parts) {
-        for (const part of response.response.candidates[0].content.parts) {
-          if (part.inlineData?.data) {
-            return part.inlineData.data;
-          }
-        }
-      }
-
-      console.error("Image generation completed but no image was returned");
-      return null;
-    } catch (error) {
-      console.error("Image generation with gemini-2.0-flash-exp-image-generation failed:", error);
-      console.log("Falling back to default recipe image");
-      return null;
-    }
-  } catch (error) {
-    console.error("Error in generateRecipeImage function:", error);
-    return null;
-  }
+  // Image generation disabled for now (no OpenAI image call here).
+  return null;
 };
 
 // --- API Generation Functions ---
@@ -220,25 +183,17 @@ export const generateRecipe = async (
   skillLevel?: string,
   servings?: string,
   equipment?: string,
-  nutritionalGoals?: string // New parameter for nutritional goals
-): Promise<Recipe> => { // Return type is the enhanced Recipe interface
+  nutritionalGoals?: string
+): Promise<Recipe> => {
   console.log("Generating recipe with inputs:", { ingredients, dietaryPreferences, cuisineStyle, mealType, cookingTime, skillLevel, servings, equipment, nutritionalGoals });
   try {
-    const genAI = initGeminiClient();
-    const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-    });
-
     const dietString = dietaryPreferences.length > 0 ? dietaryPreferences.join(', ') : 'None';
-    
-    // Add nutritional goals to the prompt if provided
-    const nutritionalGoalsPrompt = nutritionalGoals 
-      ? `\n- Nutritional Goals: ${nutritionalGoals} (Please ensure recipe meets these requirements)`
+    const nutritionalGoalsPrompt = nutritionalGoals
+      ? `\n- Nutritional Goals: ${nutritionalGoals} (ensure the recipe meets these requirements)`
       : '';
 
-    // --- Updated Prompt ---
-    const prompt = `
-Generate a detailed recipe based *strictly* on the following details. Adhere precisely to the output format requested, including all specified headings even if the information is estimated or unavailable (use "N/A" or a reasonable estimate).
+    const userPrompt = `
+Generate a detailed recipe based strictly on the following details. Use the exact headings provided and include all sections. If something is unknown, provide a reasonable estimate or use "N/A".
 
 **Recipe Requirements:**
 - Meal Type: ${mealType || 'Any'}
@@ -250,69 +205,35 @@ ${skillLevel ? `- Target Skill Level: ${skillLevel}` : ''}
 ${servings ? `- Desired Number of Servings: ${servings}` : ''}
 ${equipment ? `- Specific Equipment Available: ${equipment}` : ''}
 
-**Output Format Required (Use these exact headings followed by a colon and content):**
-
+**Output Format (use these exact headings):**
 Title:
-[Insert a creative and fitting recipe title here]
-
 Description:
-[Provide a brief, appealing description of the dish (1-2 sentences).]
-
 Prep Time:
-[Estimate the preparation time, e.g., "15 minutes"]
-
 Cook Time:
-[Estimate the cooking time, e.g., "30 minutes"]
-
 Total Time:
-[Estimate the total time (prep + cook), e.g., "45 minutes"]
-
 Servings:
-[State the number of servings this recipe makes, e.g., "4 servings"]
-
 Difficulty:
-[Estimate the difficulty level: Easy, Medium, or Hard]
-
 Ingredients:
-[List all ingredients needed, one per line, with precise quantities if possible. Start each line with '*' or '-'.]
-
 Instructions:
-[Provide clear, step-by-step cooking instructions, numbered (1., 2., 3.).]
-
 Macros:
-[Provide estimated macronutrients per serving. Use this format:
-Calories: [value] kcal
-Protein: [value]g
-Carbs: [value]g
-Fat: [value]g
-If estimation is not possible, state "Estimation unavailable".]
-
 Reasoning:
-[Briefly explain why this recipe is a good fit based on the provided ingredients and preferences (1-2 sentences).]
-
 Tips:
-[Optional: Provide 1-3 helpful cooking tips, variations, or serving suggestions. Start each tip with '*' or '-'. If none, state "None".]
 `;
 
-    console.log("--- Sending Enhanced Prompt to Gemini ---");
-    console.log("--------------------------------------");
+    const responseText = await callOpenAI([
+      {
+        role: "system",
+        content: "You are a concise, detail-oriented chef AI. Always respond using the requested headings and keep formatting tight for easy parsing.",
+      },
+      { role: "user", content: userPrompt },
+    ]);
 
-    const result = await model.generateContent(prompt);
-    const responseText = result.response?.text();
-
-    if (typeof responseText !== 'string') {
-        console.error("Invalid response format from Gemini API:", result.response);
-        throw new Error("Received an invalid response format from the AI.");
-    }
-
-    console.log("--- Raw Gemini Response (Enhanced) ---");
+    console.log("--- Raw OpenAI Recipe Response ---");
     console.log(responseText);
-    console.log("-----------------------------------");
+    console.log("---------------------------------");
 
-    // Parse the recipe response using the enhanced function
     const parsedRecipe = parseRecipeResponse(responseText);
-    
-    // Generate an image for the recipe if possible
+
     try {
       const imageBase64 = await generateRecipeImage(parsedRecipe);
       if (imageBase64) {
@@ -320,16 +241,11 @@ Tips:
       }
     } catch (imageError) {
       console.error("Failed to generate recipe image:", imageError);
-      // Continue without an image, it's optional
     }
 
     return parsedRecipe;
-
   } catch (error) {
     console.error("Error in generateRecipe function:", error);
-    if (error instanceof Error && error.message.includes('API key')) {
-         throw new Error("Invalid or missing Gemini API key.");
-    }
     throw new Error(`Failed to generate recipe: ${error instanceof Error ? error.message : 'Unknown AI error'}`);
   }
 };
@@ -343,59 +259,48 @@ Tips:
 export const scaleRecipe = async (recipe: Recipe, newServings: number): Promise<Recipe> => {
   try {
     if (!recipe) throw new Error("No recipe provided for scaling");
-    
-    const genAI = initGeminiClient();
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
-    });
-    
+
     // Extract the current servings number from the servings string
     const currentServingsMatch = recipe.servings?.match(/(\d+)/);
     const currentServings = currentServingsMatch ? parseInt(currentServingsMatch[1], 10) : 4; // Default to 4 if not found
-    
+
     // Convert ingredients array to string for the prompt
     const ingredientsList = recipe.ingredients.join('\n');
-    
-    const prompt = `
-Please scale the following recipe from ${currentServings} servings to ${newServings} servings.
-Scale ONLY the ingredient quantities proportionally and keep everything else the same.
 
-ORIGINAL RECIPE:
-Title: ${recipe.title}
-Servings: ${recipe.servings || `${currentServings} servings`}
+    const userPrompt = `
+Scale the following recipe from ${currentServings} servings to ${newServings} servings.
+Scale only the ingredient quantities proportionally and keep ingredient names unchanged.
 
-Ingredients:
+ORIGINAL INGREDIENTS:
 ${ingredientsList}
 
-YOUR TASK:
-1. Provide ONLY the scaled ingredients list with the exact same format
-2. Adjust ONLY the amounts/quantities, not the ingredients themselves
-3. For each ingredient line, scale the numeric quantities by multiplying by (${newServings}/${currentServings})
-4. Round to reasonable cooking measurements (e.g., don't say 1.33 tablespoons, say 1 1/3 tablespoons)
-5. Format your response as a simple list, exactly like the original but with adjusted quantities
-    `;
-    
-    const response = await model.generateContent(prompt);
-    const scaledIngredientsText = response.response?.text();
-    
+Output only the scaled ingredient list, one item per line, preserving bullets if present.
+`;
+
+    const scaledIngredientsText = await callOpenAI([
+      {
+        role: "system",
+        content: "You are a precise culinary assistant. Only return the scaled ingredients list with sensible rounding.",
+      },
+      { role: "user", content: userPrompt },
+    ], 0.2);
+
     if (!scaledIngredientsText) {
       throw new Error("Failed to get scaled ingredients from AI");
     }
-    
-    // Split the scaled ingredients into an array
+
     const scaledIngredients = scaledIngredientsText
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.length > 0)
-      .map(line => line.replace(/^[-*•]\s*/, '')); // Remove bullet points
-    
-    // Create a new recipe object with the scaled ingredients
+      .map(line => line.replace(/^[-*•]\s*/, ''));
+
     const scaledRecipe: Recipe = {
       ...recipe,
       ingredients: scaledIngredients,
-      servings: `${newServings} servings`
+      servings: `${newServings} servings`,
     };
-    
+
     return scaledRecipe;
   } catch (error) {
     console.error("Error scaling recipe:", error);
@@ -414,11 +319,6 @@ export const generateIngredientSubstitutions = async (
   recipe?: Recipe
 ): Promise<{substitution: string, notes: string}[]> => {
   try {
-    const genAI = initGeminiClient();
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
-    });
-
     let prompt = `
 Suggest 3-5 practical substitutions for "${ingredient}" in cooking. 
 
@@ -439,12 +339,13 @@ Format each substitution as:
       prompt += `\n\nThis is for a ${recipe.title} recipe. Consider the compatibility with these other ingredients: ${recipe.ingredients.slice(0, 5).join(', ')}`;
     }
 
-    const response = await model.generateContent(prompt);
-    const responseText = response.response?.text();
-    
-    if (!responseText) {
-      throw new Error("Empty response from AI for ingredient substitutions");
-    }
+    const responseText = await callOpenAI([
+      {
+        role: "system",
+        content: "You are a culinary substitution expert. Always respond in compact JSON array form unless instructed otherwise.",
+      },
+      { role: "user", content: prompt },
+    ], 0.4);
 
     // Parse the response text into JSON format
     // First, try to extract just the JSON array portion if it exists
@@ -492,9 +393,6 @@ export const generateChatResponse = async (
 ): Promise<{ message: string; recipe: Recipe | null }> => {
   console.log("Generating chat response for:", userMessage, "with recipe context:", !!currentRecipe);
   try {
-    const genAI = initGeminiClient();
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
     let prompt = '';
 
     // --- Updated Chat Prompt ---
@@ -587,21 +485,20 @@ ${recipeOutputFormat}
 `;
     }
 
-    console.log("--- Sending Enhanced Chat Prompt to Gemini ---");
-    // console.log(prompt);
-    console.log("-------------------------------------------");
+    console.log("--- Sending Chat Prompt to OpenAI ---");
+    console.log("------------------------------------");
 
-    const result = await model.generateContent(prompt);
-    const responseText = result.response?.text();
+    const responseText = await callOpenAI([
+      {
+        role: "system",
+        content: "You are an expert chef assistant. When generating recipes, strictly follow the provided headings. Keep responses concise and parse-friendly.",
+      },
+      { role: "user", content: prompt },
+    ]);
 
-     if (typeof responseText !== 'string') {
-        console.error("Invalid response format from Gemini API:", result.response);
-        throw new Error("Received an invalid response format from the AI.");
-    }
-
-    console.log("--- Raw Gemini Chat Response (Enhanced) ---");
+    console.log("--- Raw OpenAI Chat Response ---");
     console.log(responseText);
-    console.log("----------------------------------------");
+    console.log("--------------------------------");
 
     // --- Parse Chat Response ---
     // Check for the core recipe headings to determine if a recipe was likely generated
