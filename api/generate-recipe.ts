@@ -1,24 +1,29 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+export const config = { runtime: "deno" };
 
 const DEFAULT_MODEL = "gpt-4o-mini";
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+const json = (status: number, data: unknown) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+
+export default async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({ error: "Method Not Allowed" });
+    return json(405, { error: "Method Not Allowed" });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) {
-    return res.status(500).json({ error: "OPENAI_API_KEY is not set on the server" });
+    return json(500, { error: "OPENAI_API_KEY is not set on the server" });
   }
 
   try {
-    const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
-    const { messages, temperature = 0.7, model = DEFAULT_MODEL } = body;
+    const body = await req.json().catch(() => ({}));
+    const { messages, temperature = 0.7, model = DEFAULT_MODEL } = body ?? {};
 
     if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({ error: "messages array is required" });
+      return json(400, { error: "messages array is required" });
     }
 
     const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -32,19 +37,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!upstream.ok) {
       const text = await upstream.text();
-      return res.status(upstream.status).json({ error: text });
+      return json(upstream.status, { error: text });
     }
 
     const data = await upstream.json();
     const content = data?.choices?.[0]?.message?.content;
 
     if (!content || typeof content !== "string") {
-      return res.status(502).json({ error: "Invalid response format from OpenAI" });
+      return json(502, { error: "Invalid response format from OpenAI" });
     }
 
-    return res.status(200).json({ content });
+    return json(200, { content });
   } catch (err) {
     console.error("generate-recipe error", err);
-    return res.status(500).json({ error: "Unexpected server error" });
+    return json(500, { error: "Unexpected server error" });
   }
 }
