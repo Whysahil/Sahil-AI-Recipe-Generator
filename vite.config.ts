@@ -16,4 +16,16 @@ export default defineConfig({ // Removed mode parameter as it's no longer needed
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      // Break up the vendor bundle so no single chunk breaches the 500 kB warning
+      output: {
+        manualChunks: {
+          firebase: ["firebase/app", "firebase/auth", "firebase/firestore"],
+          react: ["react", "react-dom", "react-router-dom"],
+          ui: ["@tanstack/react-query", "lucide-react"],
+        },
+      },
+    },
+  },
 });
