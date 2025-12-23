@@ -1,24 +1,17 @@
 {
   "version": 2,
-  "git": {
-    "submodules": false
-  },
   "buildCommand": "cd AI_Recipes_Generator && npm install && npm run build",
   "installCommand": "echo Skipping root install",
   "outputDirectory": "AI_Recipes_Generator/dist",
   "functions": {
-    "AI_Recipes_Generator/api/**/*.{js,ts}": {
+    "AI_Recipes_Generator/api/**/*.ts": {
       "runtime": "deno"
     }
   },
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
-    {
-      "source": "/((?!api/|_next/|static/|public/|favicon.ico|robots.txt|manifest.json|sw.js).*)",
-      "destination": "/index.html"
+      "src": "/((?!api/).*)",
+      "dest": "/index.html"
     }
   ]
 }
