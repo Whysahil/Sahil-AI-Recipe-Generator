@@ -1,6 +1,6 @@
 # 🍳 Recipe Genesis AI Lab 🤖
 
-An intelligent web application that leverages AI (Google Gemini) to generate unique recipes based on user-provided ingredients and preferences. Features include recipe creation, modification via chat, user authentication, and recipe saving with an Appwrite backend.
+An intelligent web application that leverages AI (OpenAI GPT-4o-mini) to generate unique recipes based on user-provided ingredients and preferences. Features include recipe creation, modification via chat, user authentication with Firebase, and recipe saving functionality.
 
 <!-- Add a screenshot or GIF of the application here -->
 <!-- ![App Screenshot](path/to/your/screenshot.png) -->
@@ -16,11 +16,11 @@ An intelligent web application that leverages AI (Google Gemini) to generate uni
 
 ## ✨ Features
 
-*   **AI-Powered Recipe Generation:** Input ingredients and get unique recipes created by Google's Gemini AI.
+*   **AI-Powered Recipe Generation:** Input ingredients and get unique recipes created by OpenAI's GPT-4o-mini.
 *   **Customizable Preferences:** Tailor recipes by specifying dietary needs (Vegan, Gluten-Free, etc.), cuisine style, meal type, cooking time, and skill level.
 *   **Ingredient Management:** Input ingredients via text or speech recognition (on supported browsers). Saved ingredients can be loaded from user profiles.
 *   **Interactive AI Chatbot:** Modify generated recipes, ask for ingredient substitutions, scale servings, or ask general cooking questions.
-*   **User Authentication:** Secure signup and login functionality using Appwrite.
+*   **User Authentication:** Secure signup and login functionality using Firebase Authentication.
 *   **Saved Recipe Collection:** Logged-in users can save their favorite generated recipes.
 *   **Recipe Editing:** Modify saved recipes.
 *   **User Profiles:** Manage basic profile information and save default cooking preferences.
@@ -36,8 +36,9 @@ An intelligent web application that leverages AI (Google Gemini) to generate uni
 *   **UI Components:** shadcn/ui
 *   **State Management:** React Context (Auth, Theme), TanStack Query
 *   **Routing:** React Router v6
-*   **AI Integration:** Google Gemini API (`@google/generative-ai`)
-*   **Backend & Authentication:** Appwrite (Cloud or Self-Hosted)
+*   **AI Integration:** OpenAI API (GPT-4o-mini)
+*   **Backend:** Vercel Serverless Functions (Deno runtime)
+*   **Authentication & Database:** Firebase (Authentication, Firestore)
 *   **Linting:** ESLint with TypeScript ESLint plugin
 *   **Type Checking:** TypeScript
 
@@ -49,8 +50,8 @@ Follow these instructions to set up and run the project locally.
 
 *   **Node.js:** Version 18.x or higher recommended. (Use [nvm](https://github.com/nvm-sh/nvm) to manage Node versions).
 *   **npm:** (Comes with Node.js) or Yarn/pnpm.
-*   **Appwrite Instance:** You need a running Appwrite instance (Cloud or self-hosted).
-*   **Google Gemini API Key:** Obtain an API key from [Google AI Studio](https://aistudio.google.com/).
+*   **Firebase Project:** Create a project at [Firebase Console](https://console.firebase.google.com/).
+*   **OpenAI API Key:** Obtain an API key from [OpenAI Platform](https://platform.openai.com/api-keys).
 
 ### Installation
 
@@ -70,25 +71,39 @@ Follow these instructions to set up and run the project locally.
     ```
 
 3.  **Set up Environment Variables:**
-    Create a `.env` file in the root directory of the project by copying the example below. **Never commit your `.env` file to version control!**
+    Create a `.env` file in the root directory (`AI_Recipes_Generator/`) by copying `.env.example`. **Never commit your `.env` file to version control!**
 
-    ```dotenv
-    # .env.example - Copy this to .env and fill in your values
-
-    # Google Gemini API Key
-    VITE_GEMINI_API_KEY=YOUR_GEMINI_API_KEY
-
-    # Appwrite Configuration
-    VITE_APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1 # Or your self-hosted endpoint
-    VITE_APPWRITE_PROJECT_ID=YOUR_APPWRITE_PROJECT_ID
-    VITE_APPWRITE_DATABASE_ID=YOUR_APPWRITE_DATABASE_ID
-    VITE_APPWRITE_COLLECTION_RECIPES=YOUR_RECIPES_COLLECTION_ID
-    VITE_APPWRITE_COLLECTION_USER_PROFILES=YOUR_USER_PROFILES_COLLECTION_ID
+    ```bash
+    cp .env.example .env
     ```
 
-    Replace the placeholder values (`YOUR_...`) with your actual credentials and IDs from Google AI Studio and your Appwrite project console.
+    Then edit `.env` with your actual values:
 
-    *   **Appwrite Setup:** Ensure you have created the necessary database and collections (`recipes`, `userProfiles`) in your Appwrite project with the appropriate attributes and permissions as implied by the `src/lib/appwrite.ts` file. The `userProfiles` collection should have attributes like `userId` (string, required, indexed), `dietaryPreferences` (string array), `cuisinePreferences` (string array), `skillLevel` (string), `darkMode` (boolean), `savedIngredients` (string array), `defaultServings` (integer), `displayName` (string), `avatarUrl` (string). Document-level permissions should allow the respective user read/write access. The `recipes` collection needs attributes matching `SavedRecipeDocument`.
+    ```dotenv
+    # Firebase Configuration
+    VITE_FIREBASE_API_KEY=your_firebase_api_key
+    VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+    VITE_FIREBASE_PROJECT_ID=your_project_id
+    VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+    VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+    VITE_FIREBASE_APP_ID=your_app_id
+
+    # Optional: API Base URL (leave empty for same-origin)
+    VITE_API_BASE=
+
+    # Firebase Collections (optional - has defaults)
+    VITE_FIREBASE_COLLECTION_RECIPES=recipes
+    VITE_FIREBASE_COLLECTION_USER_PROFILES=userProfiles
+    ```
+
+    Replace the placeholder values with your actual Firebase credentials from the [Firebase Console](https://console.firebase.google.com/).
+
+    *   **Firebase Setup:** 
+        1. Create a new Firebase project or use an existing one
+        2. Enable **Authentication** with Email/Password provider
+        3. Create a **Firestore Database** in production mode
+        4. Set up Firestore security rules to allow authenticated users to read/write their own data
+        5. Copy the Firebase config from Project Settings > General > Your apps > Web app
 
 ### Running the Development Server
 
