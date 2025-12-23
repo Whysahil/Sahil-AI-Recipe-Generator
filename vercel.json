@@ -1,8 +1,24 @@
 {
-    "rewrites": [
-      {
-        "source": "/((?!api/|_next/|static/|public/|favicon.ico|robots.txt|manifest.json|sw.js).*)",
-        "destination": "/index.html"
-      }
-    ]
-  }
+  "version": 2,
+  "git": {
+    "submodules": false
+  },
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "outputDirectory": "AI_Recipes_Generator/dist",
+  "functions": {
+    "AI_Recipes_Generator/api/**/*.{js,ts}": {
+      "runtime": "deno"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/AI_Recipes_Generator/api/$1"
+    },
+    {
+      "source": "/((?!api/|_next/|static/|public/|favicon.ico|robots.txt|manifest.json|sw.js).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
